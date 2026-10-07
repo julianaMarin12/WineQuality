@@ -105,6 +105,28 @@ h1, h2, h3, .serif {{
 .stNumberInput input {{ font-variant-numeric: tabular-nums; font-weight: 500; }}
 .stNumberInput button {{ color: {MERLOT}; }}
 
+/* Cava: una tarjeta por vino del lote */
+.cava {{
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 1rem; margin: .4rem 0 1.6rem;
+}}
+.bottle-card {{
+    background: #fff; border: 1px solid {CORK}55; border-radius: 6px;
+    padding: .8rem .6rem .9rem; text-align: center;
+}}
+.bottle-card .n {{ font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: {INK}99; }}
+.bottle-card svg {{ display: block; margin: .2rem auto 0; }}
+.bottle-card .s {{
+    font-family: 'Cormorant Garamond', Georgia, serif; font-size: 2rem;
+    font-weight: 700; color: {BORDEAUX}; line-height: 1;
+}}
+.bottle-card .v {{
+    font-family: 'Cormorant Garamond', Georgia, serif; font-style: italic;
+    font-size: 1.05rem; color: {MERLOT}; margin: .15rem 0 .4rem;
+}}
+.bottle-card .k {{ font-size: .8rem; color: {INK}bb; font-variant-numeric: tabular-nums; }}
+.bottle-card .r {{ font-size: .8rem; color: {VINE}; margin-top: .2rem; }}
+
 /* Botones */
 .stButton > button, .stDownloadButton > button {{
     background: {MERLOT}; color: #fff; border: none; border-radius: 4px;
@@ -185,13 +207,6 @@ PRESETS = {
     },
 }
 
-PRESET_STYLE = {
-    "Perfil promedio": "Tinto",
-    "Blanco fresco y ligero": "Blanco",
-    "Tinto con cuerpo": "Tinto",
-    "Vino con defectos": "Tinto",
-}
-
 # Métricas del notebook (5-Fold CV, modelos optimizados)
 CV_RESULTS = pd.DataFrame(
     [
@@ -207,6 +222,7 @@ CV_RESULTS = pd.DataFrame(
     columns=["Modelo", "MAE", "MAPE", "RMSE", "R²"],
 )
 MAE_SVM = 0.6397
+MAX_CARDS = 24   # tarjetas de la cava; el resto solo en la tabla
 
 
 def verdict(q: float) -> str:
@@ -221,12 +237,7 @@ def verdict(q: float) -> str:
     return "Calidad excelente"
 
 
-# Colores de cada estilo: (superficie, fondo). Solo cambian la copa, no la predicción.
-WINE_STYLES = {
-    "Tinto": ("#9B2343", "#3E0D1E"),
-    "Rosado": ("#F08A9B", "#C2475E"),
-    "Blanco": ("#F1DC8C", "#C9A646"),
-}
+RUBY = ("#9B2343", "#3E0D1E")    # tinto limpio: (superficie, fondo)
 MURKY = ("#8A6E52", "#4A3A2C")   # tono turbio de un vino con defectos
 
 
@@ -237,14 +248,12 @@ def _mix(c1: str, c2: str, t: float) -> str:
     return "#" + "".join(f"{round(x + (y - x) * t):02x}" for x, y in zip(a, b))
 
 
-def wine_glass_svg(score: float, style: str = "Tinto", vmax: float = 10.0) -> str:
-    """Copa: el nivel sube con la calidad, el color depende del estilo y
-    se vuelve turbio cuando la calidad es baja."""
+def wine_glass_svg(score: float, vmax: float = 10.0, uid: str = "main", width: int = 190) -> str:
+    """Copa: el nivel sube con la calidad y el vino se vuelve turbio cuando la calidad es baja."""
     level = float(np.clip(score / vmax, 0.04, 1.0))
     clarity = float(np.clip((score - 3.5) / 1.5, 0.0, 1.0))   # 3.5 -> turbio, 5+ -> limpio
-    light, dark = WINE_STYLES.get(style, WINE_STYLES["Tinto"])
-    c_top = _mix(MURKY[0], light, clarity)
-    c_bottom = _mix(MURKY[1], dark, clarity)
+    c_top = _mix(MURKY[0], RUBY[0], clarity)
+    c_bottom = _mix(MURKY[1], RUBY[1], clarity)
     top, bottom = 30, 190          # límites verticales del cáliz
     y_level = bottom - (bottom - top) * level
     sparkle = ""
@@ -252,21 +261,19 @@ def wine_glass_svg(score: float, style: str = "Tinto", vmax: float = 10.0) -> st
         sparkle = (f'<ellipse class="wine-level" cx="80" cy="{y_level + 1:.1f}" rx="18" ry="1.6" '
                    f'fill="#fff" fill-opacity="{0.25 + 0.35 * (clarity - 0.75) / 0.25:.2f}"/>')
     return f"""
-<svg viewBox="0 0 200 330" width="190" role="img"
-     aria-label="Copa de vino {style.lower()} llena al {level*100:.0f}%">
+<svg viewBox="0 0 200 330" width="{width}" role="img" aria-label="Copa llena al {level*100:.0f}%">
   <defs>
-    <clipPath id="bowl">
+    <clipPath id="bowl-{uid}">
       <path d="M40 30 L160 30 C164 110 150 175 100 192 C50 175 36 110 40 30 Z"/>
     </clipPath>
-    <linearGradient id="wine" x1="0" y1="0" x2="0.4" y2="1">
+    <linearGradient id="wine-{uid}" x1="0" y1="0" x2="0.4" y2="1">
       <stop offset="0" stop-color="{c_top}"/>
       <stop offset="1" stop-color="{c_bottom}"/>
     </linearGradient>
   </defs>
-  <g clip-path="url(#bowl)">
-    <rect class="wine-level" x="0" y="{y_level:.1f}" width="200" height="{bottom - y_level + 10:.1f}" fill="url(#wine)"/>
-    <ellipse class="wine-level" cx="100" cy="{y_level:.1f}" rx="70" ry="5" fill="{_mix(c_top, '#ffffff', 0.15)}"/>
-    {sparkle}
+  <g clip-path="url(#bowl-{uid})">
+    <rect class="wine-level" x="0" y="{y_level:.1f}" width="200" height="{bottom - y_level + 10:.1f}" fill="url(#wine-{uid})"/>
+    <ellipse class="wine-level" cx="100" cy="{y_level:.1f}" rx="70" ry="5" fill="{_mix(c_top, '#ffffff', 0.15)}"/>{sparkle}
   </g>
   <path d="M40 30 L160 30 C164 110 150 175 100 192 C50 175 36 110 40 30 Z"
         fill="none" stroke="{INK}" stroke-width="2.5"/>
@@ -333,12 +340,9 @@ with tab_one:
     for f in FEATURES:
         st.session_state.setdefault(f, DEFAULTS[f])
 
-    st.session_state.setdefault("style", "Tinto")
-
     def apply_preset():
         for f, v in PRESETS[st.session_state["preset"]].items():
             st.session_state[f] = v
-        st.session_state["style"] = PRESET_STYLE[st.session_state["preset"]]
 
     st.selectbox(
         "Partir de un perfil de ejemplo",
@@ -366,14 +370,10 @@ with tab_one:
     q = float(predict(sample, art)[0])
 
     with right:
-        st.segmented_control(
-            "Estilo del vino", list(WINE_STYLES), key="style",
-            help="Solo cambia el color de la copa; el modelo no usa el tipo de vino.",
-        )
         st.markdown(
             f"""
 <div class="result">
-  {wine_glass_svg(q, st.session_state["style"] or "Tinto")}
+  {wine_glass_svg(q)}
   <div class="score">{q:.2f}<small> / 10</small></div>
   <div class="verdict">{verdict(q)}</div>
   <div class="err">Margen típico de error: ± {MAE_SVM:.2f} puntos (MAE en validación cruzada)</div>
@@ -485,7 +485,38 @@ with tab_batch:
                 )
                 st.plotly_chart(sc, width="stretch", config={"displayModeBar": False})
 
-            st.dataframe(out, width="stretch", hide_index=True)
+            st.markdown("### Tu cava")
+            shown = min(len(out), MAX_CARDS)
+            cards = []
+            for i in range(shown):
+                row = out.iloc[i]
+                q_i = float(preds[i])
+                alc = f"{row['alcohol']:.1f}% vol" if "alcohol" in out and pd.notna(row["alcohol"]) else "—"
+                va = (f"{row['volatile_acidity']:.2f} g/L"
+                      if "volatile_acidity" in out and pd.notna(row["volatile_acidity"]) else "—")
+                real_txt = ""
+                if TARGET in out and pd.notna(pd.to_numeric(row[TARGET], errors="coerce")):
+                    real_txt = f'<div class="r">Real: {float(row[TARGET]):g}</div>'
+                cards.append(
+                    f'<div class="bottle-card"><div class="n">Vino {i + 1}</div>'
+                    f"{wine_glass_svg(q_i, uid=f'b{i}', width=90)}"
+                    f'<div class="s">{q_i:.2f}</div><div class="v">{verdict(q_i)}</div>'
+                    f'<div class="k">Alcohol {alc}<br>Acidez volátil {va}</div>{real_txt}</div>'
+                )
+            st.markdown(f'<div class="cava">{"".join(cards)}</div>', unsafe_allow_html=True)
+            if len(out) > shown:
+                st.caption(f"Se muestran los primeros {shown} de {len(out)} vinos; "
+                           "la tabla y la descarga incluyen todos.")
+
+            st.markdown("### Detalle")
+            st.dataframe(
+                out, width="stretch", hide_index=True,
+                column_config={
+                    "prediccion_calidad": st.column_config.ProgressColumn(
+                        "Calidad estimada", min_value=0, max_value=10, format="%.2f"),
+                    "valoracion": "Valoración",
+                },
+            )
             buf = io.StringIO()
             out.to_csv(buf, index=False)
             st.download_button("Descargar resultados", buf.getvalue().encode("utf-8"),
