@@ -1,0 +1,8 @@
+streamlit>=1.50
+pandas
+numpy
+plotly>=5.20
+joblib
+# Debe coincidir con la versión de Colab con la que exportaste los .joblib.
+# Revísala en Colab con:  import sklearn; print(sklearn.__version__)
+scikit-learn==1.6.1
