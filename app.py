@@ -97,11 +97,20 @@ h1, h2, h3, .serif {{
     border-bottom: 1px solid {CORK}66; padding-bottom: .2rem; margin: .2rem 0 .6rem;
 }}
 
+/* Casillas numéricas */
+.stNumberInput [data-baseweb="input"] {{
+    background: #fff; border: 1px solid {CORK}66; border-radius: 4px;
+}}
+.stNumberInput [data-baseweb="input"]:focus-within {{ border-color: {MERLOT}; }}
+.stNumberInput input {{ font-variant-numeric: tabular-nums; font-weight: 500; }}
+.stNumberInput button {{ color: {MERLOT}; }}
+
 /* Botones */
 .stButton > button, .stDownloadButton > button {{
     background: {MERLOT}; color: #fff; border: none; border-radius: 4px;
     font-weight: 700; padding: .6rem 1.4rem;
 }}
+.stButton > button p, .stDownloadButton > button p {{ color: #fff !important; }}
 .stButton > button:hover, .stDownloadButton > button:hover {{ background: {BORDEAUX}; color: #fff; }}
 .stButton > button:focus-visible, .stDownloadButton > button:focus-visible {{
     outline: 3px solid {CORK}; outline-offset: 2px;
@@ -176,6 +185,13 @@ PRESETS = {
     },
 }
 
+PRESET_STYLE = {
+    "Perfil promedio": "Tinto",
+    "Blanco fresco y ligero": "Blanco",
+    "Tinto con cuerpo": "Tinto",
+    "Vino con defectos": "Tinto",
+}
+
 # Métricas del notebook (5-Fold CV, modelos optimizados)
 CV_RESULTS = pd.DataFrame(
     [
@@ -205,25 +221,52 @@ def verdict(q: float) -> str:
     return "Calidad excelente"
 
 
-def wine_glass_svg(score: float, vmax: float = 10.0) -> str:
-    """Copa cuyo nivel de vino es proporcional a la calidad estimada."""
+# Colores de cada estilo: (superficie, fondo). Solo cambian la copa, no la predicción.
+WINE_STYLES = {
+    "Tinto": ("#9B2343", "#3E0D1E"),
+    "Rosado": ("#F08A9B", "#C2475E"),
+    "Blanco": ("#F1DC8C", "#C9A646"),
+}
+MURKY = ("#8A6E52", "#4A3A2C")   # tono turbio de un vino con defectos
+
+
+def _mix(c1: str, c2: str, t: float) -> str:
+    """Mezcla dos colores hex: t=0 -> c1, t=1 -> c2."""
+    a = [int(c1[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(c2[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x + (y - x) * t):02x}" for x, y in zip(a, b))
+
+
+def wine_glass_svg(score: float, style: str = "Tinto", vmax: float = 10.0) -> str:
+    """Copa: el nivel sube con la calidad, el color depende del estilo y
+    se vuelve turbio cuando la calidad es baja."""
     level = float(np.clip(score / vmax, 0.04, 1.0))
+    clarity = float(np.clip((score - 3.5) / 1.5, 0.0, 1.0))   # 3.5 -> turbio, 5+ -> limpio
+    light, dark = WINE_STYLES.get(style, WINE_STYLES["Tinto"])
+    c_top = _mix(MURKY[0], light, clarity)
+    c_bottom = _mix(MURKY[1], dark, clarity)
     top, bottom = 30, 190          # límites verticales del cáliz
     y_level = bottom - (bottom - top) * level
+    sparkle = ""
+    if clarity > 0.75:             # brillo en la superficie para los vinos buenos
+        sparkle = (f'<ellipse class="wine-level" cx="80" cy="{y_level + 1:.1f}" rx="18" ry="1.6" '
+                   f'fill="#fff" fill-opacity="{0.25 + 0.35 * (clarity - 0.75) / 0.25:.2f}"/>')
     return f"""
-<svg viewBox="0 0 200 330" width="190" role="img" aria-label="Copa llena al {level*100:.0f}%">
+<svg viewBox="0 0 200 330" width="190" role="img"
+     aria-label="Copa de vino {style.lower()} llena al {level*100:.0f}%">
   <defs>
     <clipPath id="bowl">
       <path d="M40 30 L160 30 C164 110 150 175 100 192 C50 175 36 110 40 30 Z"/>
     </clipPath>
-    <linearGradient id="wine" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="{MERLOT}"/>
-      <stop offset="1" stop-color="{BORDEAUX}"/>
+    <linearGradient id="wine" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="{c_top}"/>
+      <stop offset="1" stop-color="{c_bottom}"/>
     </linearGradient>
   </defs>
   <g clip-path="url(#bowl)">
     <rect class="wine-level" x="0" y="{y_level:.1f}" width="200" height="{bottom - y_level + 10:.1f}" fill="url(#wine)"/>
-    <ellipse class="wine-level" cx="100" cy="{y_level:.1f}" rx="70" ry="5" fill="#8E2A48"/>
+    <ellipse class="wine-level" cx="100" cy="{y_level:.1f}" rx="70" ry="5" fill="{_mix(c_top, '#ffffff', 0.15)}"/>
+    {sparkle}
   </g>
   <path d="M40 30 L160 30 C164 110 150 175 100 192 C50 175 36 110 40 30 Z"
         fill="none" stroke="{INK}" stroke-width="2.5"/>
@@ -290,9 +333,12 @@ with tab_one:
     for f in FEATURES:
         st.session_state.setdefault(f, DEFAULTS[f])
 
+    st.session_state.setdefault("style", "Tinto")
+
     def apply_preset():
         for f, v in PRESETS[st.session_state["preset"]].items():
             st.session_state[f] = v
+        st.session_state["style"] = PRESET_STYLE[st.session_state["preset"]]
 
     st.selectbox(
         "Partir de un perfil de ejemplo",
@@ -313,17 +359,21 @@ with tab_one:
                     lo, hi = LIMITS[f]
                     label = f"{name} ({unit})" if unit else name
                     fmt = "%.4f" if f == "density" else ("%.3f" if f == "chlorides" else "%.2f")
-                    st.slider(label, float(lo), float(hi), step=float(step),
-                              key=f, help=help_txt, format=fmt)
+                    st.number_input(label, float(lo), float(hi), step=float(step),
+                                    key=f, help=help_txt, format=fmt)
 
     sample = pd.DataFrame([{f: st.session_state[f] for f in FEATURES}])
     q = float(predict(sample, art)[0])
 
     with right:
+        st.segmented_control(
+            "Estilo del vino", list(WINE_STYLES), key="style",
+            help="Solo cambia el color de la copa; el modelo no usa el tipo de vino.",
+        )
         st.markdown(
             f"""
 <div class="result">
-  {wine_glass_svg(q)}
+  {wine_glass_svg(q, st.session_state["style"] or "Tinto")}
   <div class="score">{q:.2f}<small> / 10</small></div>
   <div class="verdict">{verdict(q)}</div>
   <div class="err">Margen típico de error: ± {MAE_SVM:.2f} puntos (MAE en validación cruzada)</div>
