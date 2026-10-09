@@ -81,6 +81,14 @@ h1, h2, h3, .serif {{
     font-size: 1.15rem;
     margin-bottom: .4rem;
 }}
+.label .team {{
+    margin-top: 1.1rem;
+    padding-top: .8rem;
+    border-top: 1px solid {CORK}55;
+    color: {CORK};
+    font-size: .95rem;
+    letter-spacing: .02em;
+}}
 
 /* Pestañas */
 .stTabs [data-baseweb="tab-list"] {{ gap: 1.6rem; border-bottom: 1px solid {MERLOT}33; }}
@@ -314,6 +322,7 @@ st.markdown(
   <h1>¿Qué tan bueno es este vino?</h1>
   <p>Describe su perfil fisicoquímico y el modelo estima la calificación de calidad
   que le daría un panel de catadores.</p>
+  <div class="team">Integrantes: Maria Camila Duque · Carmen Juliana Marin</div>
 </div>
 """,
     unsafe_allow_html=True,
